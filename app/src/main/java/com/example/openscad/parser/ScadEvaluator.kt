@@ -33,7 +33,7 @@ class ScadScope(
     }
 
     fun getModule(name: String): AstNode.ModuleDef? {
-        return modules[name] ?: parent?.getModule(name)
+        return modules[name.lowercase(Locale.ROOT)] ?: parent?.getModule(name)
     }
 }
 
@@ -53,14 +53,19 @@ class ScadEvaluator {
         val timeMs = measureTimeMillis {
             // First pass: collect module definitions and global variable assignments
             for (node in ast) {
-                if (node is AstNode.ModuleDef) {
-                    scope.modules[node.name] = node
+                when (node) {
+                    is AstNode.ModuleDef -> scope.modules[node.name.lowercase(Locale.ROOT)] = node
+                    is AstNode.VarAssign -> {
+                        val value = evalExpr(node.expr, scope)
+                        scope.setVar(node.name, value)
+                    }
+                    else -> {}
                 }
             }
 
             val childMeshes = mutableListOf<CsgMesh>()
             for (node in ast) {
-                if (node !is AstNode.ModuleDef) {
+                if (node !is AstNode.ModuleDef && node !is AstNode.VarAssign) {
                     val m = evalNode(node, scope, warnings, errors)
                     if (m != null && !m.isEmpty) {
                         childMeshes.add(m)

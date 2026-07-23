@@ -84,17 +84,38 @@ object CsgEngine {
                         }
                     }
 
-                    if (f.size >= 3) front.add(Polygon(f, poly.color, poly.plane))
-                    if (b.size >= 3) back.add(Polygon(b, poly.color, poly.plane))
+                    val cleanF = cleanVertices(f)
+                    val cleanB = cleanVertices(b)
+
+                    if (cleanF.size >= 3) front.add(Polygon(cleanF, poly.color, poly.plane))
+                    if (cleanB.size >= 3) back.add(Polygon(cleanB, poly.color, poly.plane))
                 }
             }
+        }
+
+        private fun cleanVertices(verts: List<Vector3>): List<Vector3> {
+            if (verts.size < 3) return verts
+            val cleaned = mutableListOf<Vector3>()
+            for (v in verts) {
+                if (cleaned.isEmpty() || (cleaned.last() - v).length() > 1e-4f) {
+                    cleaned.add(v)
+                }
+            }
+            if (cleaned.size > 1 && (cleaned.first() - cleaned.last()).length() <= 1e-4f) {
+                cleaned.removeAt(cleaned.size - 1)
+            }
+            return cleaned
         }
     }
 
     class Polygon(
         val vertices: List<Vector3>,
         val color: Color4 = Color4.DEFAULT,
-        val plane: Plane = Plane.fromPoints(vertices.getOrElse(0) { Vector3.ZERO }, vertices.getOrElse(1) { Vector3.ZERO }, vertices.getOrElse(2) { Vector3.ZERO }) ?: Plane(Vector3.UP, 0f)
+        val plane: Plane = Plane.fromPoints(
+            vertices.getOrElse(0) { Vector3.ZERO },
+            vertices.getOrElse(1) { Vector3.ZERO },
+            vertices.getOrElse(2) { Vector3.ZERO }
+        ) ?: Plane(Vector3.UP, 0f)
     ) {
         fun flipped(): Polygon {
             return Polygon(vertices.reversed(), color, plane.flipped())
@@ -107,7 +128,11 @@ object CsgEngine {
             for (i in 1 until vertices.size - 1) {
                 val p1 = vertices[i]
                 val p2 = vertices[i + 1]
-                tris.add(Triangle3(p0, p1, p2, color = color))
+                // Skip degenerate collinear or zero-area triangles
+                val cross = (p1 - p0).cross(p2 - p0)
+                if (cross.length() > 1e-5f) {
+                    tris.add(Triangle3(p0, p1, p2, color = color))
+                }
             }
             return tris
         }
@@ -192,8 +217,39 @@ object CsgEngine {
             }
 
             if (plane == null) {
-                val candidate = polys.firstOrNull { abs(it.plane.normal.length() - 1.0f) < 0.1f } ?: polys[0]
-                plane = candidate.plane
+                var bestCandidate = polys[0]
+                var bestScore = Int.MAX_VALUE
+
+                val candidates = if (polys.size <= 8) polys else {
+                    val step = polys.size / 6
+                    listOf(
+                        polys[0],
+                        polys[step],
+                        polys[2 * step],
+                        polys[3 * step],
+                        polys[4 * step],
+                        polys[5 * step]
+                    )
+                }
+
+                for (cand in candidates) {
+                    val cp = cand.plane
+                    if (abs(cp.normal.length() - 1.0f) > 0.1f) continue
+                    var fCount = 0
+                    var bCount = 0
+                    for (p in polys) {
+                        val v0 = p.vertices.getOrElse(0) { Vector3.ZERO }
+                        val d = cp.normal.dot(v0) - cp.w
+                        if (d > EPSILON) fCount++
+                        else if (d < -EPSILON) bCount++
+                    }
+                    val score = abs(fCount - bCount)
+                    if (score < bestScore) {
+                        bestScore = score
+                        bestCandidate = cand
+                    }
+                }
+                plane = bestCandidate.plane
             }
             val p = plane!!
             val f = mutableListOf<Polygon>()
@@ -203,20 +259,18 @@ object CsgEngine {
                 p.splitPolygon(poly, polygons, polygons, f, b)
             }
 
-            if (f.size >= polys.size || b.size >= polys.size) {
-                // No progress splitting on this plane; store directly to avoid infinite recursion
-                polygons.addAll(f)
-                polygons.addAll(b)
-                return
-            }
-
-            if (f.isNotEmpty()) {
+            if (f.isNotEmpty() && f.size < polys.size) {
                 if (front == null) front = BspNode()
                 front!!.build(f, depth + 1)
+            } else if (f.isNotEmpty()) {
+                polygons.addAll(f)
             }
-            if (b.isNotEmpty()) {
+
+            if (b.isNotEmpty() && b.size < polys.size) {
                 if (back == null) back = BspNode()
                 back!!.build(b, depth + 1)
+            } else if (b.isNotEmpty()) {
+                polygons.addAll(b)
             }
         }
     }

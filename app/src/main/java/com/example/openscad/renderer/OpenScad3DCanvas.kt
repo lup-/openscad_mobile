@@ -24,6 +24,7 @@ import com.example.openscad.model.RenderSettings
 import com.example.openscad.model.Triangle3
 import com.example.openscad.model.Vector3
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -174,7 +175,7 @@ fun OpenScad3DCanvas(
                     }
 
                     // Phong / Diffuse Directional Lighting
-                    val dotLight = max(0.15f, t.normal.dot(lightDir))
+                    val dotLight = max(0.2f, abs(t.normal.dot(lightDir)))
                     val r = (t.color.r * dotLight).coerceIn(0f, 1f)
                     val g = (t.color.g * dotLight).coerceIn(0f, 1f)
                     val b = (t.color.b * dotLight).coerceIn(0f, 1f)
