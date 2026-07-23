@@ -1,0 +1,6 @@
+{
+  "name": "OpenSCAD 3D",
+  "description": "OpenSCAD code editor with interactive 3D CSG renderer, sample templates, and STL export for 3D printing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
